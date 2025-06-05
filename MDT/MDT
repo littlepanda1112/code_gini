@@ -1,0 +1,129 @@
+import math
+from MDT import MDT_Infer
+
+class Node:
+    def __init__(self, x):
+        self.val = x
+        self.left = None
+        self.right = None
+
+class learnSatDT:
+    def __init__(self, data, numFeature, numClass, terms):
+
+        self.data = data
+
+        self.dataNumFeature = numFeature #用到
+
+        self.dataNumClass = numClass
+
+        self.terms = terms
+
+    
+    def findOptimalTree(self, numNodeSize):
+        while True:
+            if int((numNodeSize-1)/2) > 7:
+                return False
+            
+            print("进行到节点个数：")
+            print(numNodeSize)
+            print("-------------")
+            root = self.inferTree(
+                numNodeSize)
+            # 1.找到了一棵树
+            if root:
+                print("找到树了")
+                break
+            # print("没找到，继续增加节点个数")
+            numNodeSize+= 2
+        return root
+    
+    
+    def preorder_traversal(self, node, path, T, G, S,E,toward):
+        dt1 = (path, node.val)
+        dt2 = (path,node.val-1)
+        G[dt2] = toward
+        # 如果是叶子
+        if node.left is None:
+            T[dt1] = 1
+            G[dt1] = 1
+            S[path] = dt1[1]
+            E[dt1] = 0
+            return path
+        # 如果不是叶子
+        else:
+            T[dt1] = 0
+        start_left = path
+        end_left = self.preorder_traversal(node.left,start_left,T,G,S,E,0)
+        end_right = self.preorder_traversal(node.right,end_left+1,T,G,S,E,1)
+        # 再遍历一遍node节点
+        for i in range(start_left+1, end_right+1):
+            dt1 = (i, node.val)
+            dt2 = (i, node.val-1)
+            T[dt1] = 0
+            G[dt2] = toward
+        for i in range(start_left+1, end_right+1):
+            dt1 = (i, node.val)
+            E[dt1]=1
+        E[(start_left,node.val)]=0
+        return end_right
+    
+    # 4-1.找到最佳决策树
+    def inferTree(self, numNodeSize):
+        # 首先将深度设为为2就要开始构造树
+        #得到所有的可能，往左为0，往右为1 #int((numNodeSize+1) / 2)-1
+        root = self.TE(numNodeSize, 2 , 1)
+        # print("得到该节点树的结构种数：")
+        # print(len(root))
+        # print("开始用上面的模板一个个测试")
+        for tree in root:
+            T={}
+            G= {}
+            S = {}
+            E = {}
+            # printTree(tree,-1)
+            # print("----------------")
+            self.preorder_traversal(tree,1,T,G,S,E,0)
+            infer = MDT_Infer.Mysolver(self.data,self.dataNumFeature,self.dataNumClass,self.terms,numNodeSize)
+            infer.addConstraints_sample(T,G,S,E)
+            if infer.myslover.solve():
+                # print("有解！！！打印model: ")
+                model = infer.myslover.get_model()
+                # print(model)
+                root = infer.getTreeModel(model,S,G,E)
+                return root
+        return False
+    
+    # n为节点个数 d为达到最大深度开始采用编码
+    def TE(self, n, d,dep):
+        if n == 1:
+            return [Node(dep)]
+        # elif dep == d:
+        #     infer = DTEP_Infer.Mysolver(self.data,self.dataNumFeature,self.dataNumClass,self.terms,n)
+        #     infer.getSpace()
+        #     roots = []
+        #     for model in infer.myslover.enum_models():
+        #         # print(model)
+        #         root = infer.getSpaceModel(model,dep)
+
+        #         roots.append(root)
+        #         # printTree(root,-1)
+        #     return roots
+        # else:
+        # print("n不等于1且d不等于0")
+        trees = []
+        for i in range(1, n, 2):
+            # print("*******")
+            # print("左子树",i,"个节点，右子树",n - i - 1,"个节点")
+            left_subtrees = self.TE(i, d, dep+1)
+            # print(i,"左子树的节点个数有",len(left_subtrees),"种")
+            right_subtrees = self.TE(n - i - 1, d, dep+1)
+
+            for left in left_subtrees:
+                for right in right_subtrees:
+                    tree = Node(dep)
+                    tree.left = left
+                    tree.right = right
+                    trees.append(tree)
+
+        return trees
+            

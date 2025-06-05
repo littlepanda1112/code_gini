@@ -1,0 +1,387 @@
+import math
+
+from pysat.formula import CNF
+from pysat.solvers import Solver
+import itertools
+def printTree(node,toward):
+    if node is None:
+        return
+    
+    print(node.val,toward,node)
+    printTree(node.left,0)
+    printTree(node.right,1)
+class Node:
+    def __init__(self,x):
+        self.val = x
+        self.left = None
+        self.right = None
+
+class Mysolver:
+    def __init__(self, data, dataNumFeature, dataNumClass, terms, numNodeSize):
+        self.data = data
+        self.dataNumFeature = dataNumFeature
+        self.dataNumClass = dataNumClass
+        self.terms = terms
+        self.numDataSize = len(data) - 1
+        
+        self.numPath = int((numNodeSize+1) / 2) 
+        self.numStep = self.numPath - 1# step
+
+
+        self.myslover = Solver(name='cd') 
+        self.localindex = 0
+        self.G = {}
+        self.T = {}
+        self.E = {}
+        self.A = {}
+        self.M1 = {}
+        self.M2 = {}
+        self.C = {}
+        self.X = {}
+    # (1).路径p在步骤s处往右还是左，往右为1，往左为0
+    def getVarG(self, p, s):
+        dt = (p, s)
+        if dt not in self.G.keys():
+            self.localindex += 1
+            self.G[dt] = self.localindex
+        return self.G[dt]
+
+    # (2).路径p的步骤s是终态
+    def getVarT(self, p, s):
+        dt = (p, s)
+        if dt not in self.T.keys():
+            self.localindex += 1
+            self.T[dt] = self.localindex
+        return self.T[dt]
+
+    # (3).步骤s在路径p和p-1是一样的
+    def getVarE(self, p, s):
+        dt = (p, s)
+        if dt not in self.E.keys():
+            self.localindex += 1
+            self.E[dt] = self.localindex
+        return self.E[dt]
+
+    # (4).路径p的步骤s处赋予特征f
+    def getVarA(self, p, s, f):
+        dt = (p, s, f)
+        if dt not in self.A.keys():
+            self.localindex += 1
+            self.A[dt] = self.localindex
+        return self.A[dt]
+
+    #(5).路径p匹配样本q
+    def getVarM1(self, p, q):
+        dt = (p, q)
+        if dt not in self.M1.keys():
+            self.localindex += 1
+            self.M1[dt] = self.localindex
+        return self.M1[dt]
+    
+    # (6).路径p上放置特征f，且特征在该处取值为v
+    def getVarM2(self, p, f, v):
+        dt = (p, f, v)
+        if dt not in self.M2.keys():
+            self.localindex += 1
+            self.M2[dt] = self.localindex
+        return self.M2[dt]
+
+    # (7).路径p被赋予了c类
+    def getVarC(self, p, c):
+        dt = (p, c)
+        if dt not in self.C.keys():
+            self.localindex += 1
+            self.C[dt] = self.localindex
+        return self.C[dt]
+    # (8).
+    def getVarX(self, v, f):
+        dt = (v, f)
+        if dt not in self.X.keys():
+            self.localindex += 1
+            self.X[dt] = self.localindex
+        return self.X[dt]
+
+    # 获取决策树的空间
+    # def getSpace(self):
+    #     # print("得到空间结束")
+    #     # 1.路径p在步骤1都是和p-1一样,p取值（2,p）-----子句（1）
+    #     for p in range(2, self.numPath + 1):
+    #         self.myslover.add_clause([self.getVarE(p,1)])
+    #         # print([self.getVarE(p,1)])
+    #     # 2.如果路径p和p-1在步骤s+1一样，那么路径p和p-1在s都是往一个方向且p和p-1在步骤s都是一样的（1）
+    #     for p in range(2, self.numPath + 1):
+    #         for s in range(1, self.numStep + 1):
+    #             one = [-self.getVarE(p,s+1),self.getVarE(p,s)]
+    #             two = [-self.getVarE(p,s+1),-self.getVarG(p,s),self.getVarG(p-1,s)]
+    #             three = [-self.getVarE(p,s+1),self.getVarG(p,s),-self.getVarG(p-1,s)]
+    #             self.myslover.add_clause(one)
+    #             self.myslover.add_clause(two)
+    #             self.myslover.add_clause(three)
+    #             # print(one)
+    #             # print(two)
+    #             # print(three)
+    #             one = [self.getVarG(p,s),self.getVarG(p-1,s),-self.getVarE(p,s),self.getVarE(p,s+1)]
+    #             two = [-self.getVarG(p,s),-self.getVarG(p-1,s),-self.getVarE(p,s),self.getVarE(p,s+1)]
+    #             self.myslover.add_clause(one)
+    #             self.myslover.add_clause(two)
+    #             # print(one)
+    #             # print(two)
+    #     # 3.(3)如果路径p在s处是终点，则p在s+1处也是终点
+    #     for p in range(1, self.numPath + 1):
+    #         for s in range(1, self.numStep + 1):
+    #             self.myslover.add_clause([-self.getVarT(p,s),self.getVarT(p,s+1)])
+    #             # print([-self.getVarT(p,s),self.getVarT(p,s+1)])
+    #     # 4.(4)如果路径p在s处是终点，则路径p在步骤s处一定不会和p-1一样
+    #     for p in range(2, self.numPath + 1):
+    #         for s in range(1, self.numStep + 2):
+    #             self.myslover.add_clause([-self.getVarT(p,s),-self.getVarE(p,s)])
+    #             self.myslover.add_clause([-self.getVarT(p,s),self.getVarG(p-1,s)])
+    #             # print([-self.getVarT(p,s),-self.getVarE(p,s)])
+    #     # 5.(5) S=1步骤处一定为终点，也就是叶子
+    #     for p in range(1, self.numPath + 1):
+    #         self.myslover.add_clause([self.getVarT(p,self.numStep+1)])
+    #         # print([self.getVarT(p,self.numStep+1)])
+    #     # 6.(6)路径1在s处一定像左和最后一条路径一定向右
+    #     for s in range(1, self.numStep + 1):
+    #         self.myslover.add_clause([self.getVarT(1,s),-self.getVarG(1,s)])
+    #         self.myslover.add_clause([self.getVarG(self.numPath,s)])
+    #         # print([-self.getVarG(1,s)])
+    #         # print([self.getVarG(self.numPath,s)])
+    #     # 7.(7)如果路径p在s处和p-1一样，则p-1也往右，p在s处往右；则p-1也往左，p在s处往左；则p-1也往左，p在s处往右；不可能出现p-1也往右，p在s处往左
+    #     for p in range(2, self.numPath + 1):
+    #         for s in range(1, self.numStep + 2):
+    #             one = [-self.getVarE(p,s),-self.getVarG(p-1,s),self.getVarG(p,s)]
+    #             self.myslover.add_clause(one)
+    #             # print(one)
+    #     # 8.(8)+(9) 如果p在s处不是终点并且p在s处和p-1在s处不一样，p在s处一定往左；p-1在s处一定往右
+    #     for p in range(2, self.numPath + 1):
+    #         for s in range(1, self.numStep + 1):
+    #             one = [self.getVarT(p,s),self.getVarE(p,s),-self.getVarG(p,s)]
+    #             two = [self.getVarT(p,s),self.getVarE(p,s),self.getVarG(p-1,s)]
+    #             self.myslover.add_clause(one)
+    #             self.myslover.add_clause(two)
+    #             # print(one)
+    #             # print(two)
+    #     # 额外附加约束
+    #     for s in range(1, self.numStep + 1):
+    #         self.myslover.add_clause([-self.getVarT(1,s),-self.getVarE(2,s)])
+    #         # print([-self.getVarT(1,s),-self.getVarE(2,s)])
+    #     # for p in range(1,self.numPath):
+    #     #     for s in range(1,self.numStep+1):
+    #     #         self.myslover.add_clause([self.getVarG(p,s),-self.getVarT(p,s+1),self.getVarE(p+1,s)])
+    #     #         self.myslover.add_clause([self.getVarG(p,s),-self.getVarT(p,s+1),self.getVarG(p+1,s)])
+    #     for p in range(1,self.numPath+1):
+    #         for s in range(1,self.numStep+2):
+    #             self.myslover.add_clause([-self.getVarT(p,s),self.getVarG(p,s)])
+    #             # print([-self.getVarT(p,s),self.getVarG(p,s)])
+        
+    #     # print("getspace结束")
+    #     # print("E:")
+    #     # print(self.E)
+    #     # print("G:")
+    #     # print(self.G)
+    #     # print("T:")
+    #     # print(self.T)
+        
+    def addConstraints_sample(self,T,G,S,E):
+
+        # for s in range(1,self.dataNumClass)
+
+        # for q in range(1, self.numDataSize+1):
+        #     if self.data[q]
+       
+
+
+
+        # # 如果p路径的s步骤和p-1一样，那么A 就需要取一样的值
+        # for p in range(2, self.numPath + 1):
+        #     for s in range(1,S[p]):
+        #         if E[(p,s)]==1:
+        #             for f in range(1,self.dataNumFeature+1):
+        #                 one = [self.getVarA(p,s,f), -self.getVarA(p-1,s,f)]
+        #                 two = [-self.getVarA(p,s,f), self.getVarA(p-1,s,f)]
+        #                 self.myslover.add_clause(one)
+        #                 self.myslover.add_clause(two)
+        
+        # # 10.(10)p在步骤s上一定有一个特征；
+        # for p in range(1, self.numPath + 1):
+        #     for s in range(1,S[p]):
+        #         one = []
+        #         for f1 in range(1,self.dataNumFeature+1):
+        #             one.append(self.getVarA(p,s,f1))
+        #             for f2 in range(f1+1, self.dataNumFeature+1):
+        #                 two = [-self.getVarA(p,s,f1),-self.getVarA(p,s,f2)]
+        #                 self.myslover.add_clause(two)
+        #                 # print(two)
+        #         self.myslover.add_clause(one)
+        #         # print(one)
+        # # print("约束10结束")
+        # #11.(11)一个特征只能在所有的路径上出现一次或者不出现
+        
+        # #12.(12) 路径p上面放置特征f且像左，则可以推出，对于路径上任何得一个s，要么是终点，要么上面不放特征f，要么不是终点且放特征f且往左
+        # for p in range(1, self.numPath + 1):
+        #     # print("进行到第",p,"条路径")
+        #     for f in range(1,self.dataNumFeature+1):
+        #         one = [self.getVarM2(p,f,0)]
+        #         for s in range(1, S[p]):  
+        #             if (T[(p,s)] ==1) | (G[(p,s)] ==1):
+        #                 continue
+        #             else:
+        #                 self.myslover.add_clause([-self.getVarM2(p,f,0),-self.getVarA(p,s,f)])
+        #                 # print([-self.getVarM2(p,f,0),-self.getVarA(p,s,f)])
+        #                 one.append(self.getVarA(p,s,f))
+        #         self.myslover.add_clause(one)
+        #         # print(one)
+        # # print("12结束")
+        # #13.(13)路径p上面放置特征f且像右，则可以推出，对于路径上任何得一个s，要么是终点，要么上面不放特征f，要么不是终点且放特征f且往右
+        # for p in range(1, self.numPath + 1):
+        #     for f in range(1,self.dataNumFeature+1):
+        #         one = [self.getVarM2(p,f,1)]
+        #         for s in range(1, S[p]):  
+        #             if (T[(p,s)] ==1) | (G[(p,s)] ==0):
+        #                 continue
+        #             else:
+        #                 self.myslover.add_clause([-self.getVarM2(p,f,1),-self.getVarA(p,s,f)])
+        #                 # print([-self.getVarM2(p,f,1),-self.getVarA(p,s,f)])
+        #                 one.append(self.getVarA(p,s,f))
+        #         self.myslover.add_clause(one)
+        #         # print(one)
+        # # print("约束12，13结束")
+        # #14.(14) 路径p属于q样本，
+        # for p in range(1, self.numPath + 1):
+        #     for q in range(1, self.numDataSize+1):
+        #         two = [self.getVarM1(p,q)]
+        #         for f in range(1, self.dataNumFeature + 1):
+        #             one = [-self.getVarM1(p,q),self.getVarM2(p,f,self.data[q][0][f-1])]
+        #             self.myslover.add_clause(one)
+        #             # print(one)
+        #             two.append(-self.getVarM2(p,f,self.data[q][0][f-1]))
+        #         self.myslover.add_clause(two)
+        #         # print(two)
+        # # print("约束14结束")
+        # #15.(15) 16.(16) p上面放置q样本，则p路径为该样本得分类
+        # for p in range(1, self.numPath + 1):
+        #     for q in range(1, self.numDataSize+1):
+        #         one = [-self.getVarM1(p,q)]
+        #         # tow = [self.getVarM1(p,q)]
+        #         for c in self.data[q][1]:
+        #             one.append(self.getVarC(p,c+1)) 
+        #             # tow.append(-self.getVarC(p,c+1))
+        #             # self.myslover.add_clause(tow)
+        #             # = [-self.getVarM1(p,q),self.getVarC(p,c+1)]
+        #         self.myslover.add_clause(one)
+        #         # print(one)
+        # # print("约束15，16结束")
+        # #16 一个叶子节点只能放一个标签
+        # for p in range(1, self.numPath + 1):
+        #     for c1 in range(1,self.dataNumClass+1):
+        #         for c2 in range(c1+1,self.dataNumClass+1):
+        #             one = [-self.getVarC(p,c1),-self.getVarC(p,c2)]
+        #             self.myslover.add_clause(one)
+        #             # print(one)
+        # # print("约束16结束")
+        # #17.(17) 任何一条路径都有样本经过
+        # for p in range(1, self.numPath + 1):
+        #     one = []
+        #     for q in range(1, self.numDataSize+1):
+        #         one.append(self.getVarM1(p,q))
+        #     self.myslover.add_clause(one)
+        #     # print(one)
+        # # print("约束17结束")
+        # #18.（18）
+
+        #19.（19）任何一个训练样本都要能匹配上一条路径
+        # for q in range(1, self.numDataSize+1):
+        #     one=[]
+        #     for p in range(1, self.numPath + 1):
+        #         one.append(self.getVarM1(p,q))
+        #     self.myslover.add_clause(one)
+        #     # print(one)
+        # # print("getspace结束")
+        
+        
+    # # 2.根据模型得到解空间，还未赋予特征
+    # def getSpaceModel(self, model, dep):
+    #     # print((self.numPath+1),(self.numStep+2))
+    #     # tree = [[0] * (self.numPath+1) for _ in range((self.numStep+2))]
+    #     tree =[[0] * (self.numPath+1)] * (self.numStep+2)
+    #     model = ["#"] + model
+    #     tree[1][1] = Node(dep)
+    #     for s in range(2,self.numStep+2):
+    #         tree[1][s] = Node(dep+s-1)
+    #         tree[1][s-1].left = tree[1][s]
+    #         if model[self.getVarT(1,s)] > 0:
+    #             break
+    #     for p in range(2,self.numPath+1):
+    #         for s in range(2,self.numStep+2):
+    #             if model[self.getVarE(p,s)]>0:
+    #                 tree[p][s] = tree[p-1][s]
+    #             else:
+    #                 tree[p][s] = Node(dep+s-1)
+    #             # print(p,s-1,self.getVarG(p,s-1))
+    #             if model[self.getVarG(p,s-1)]>0:
+    #                 tree[p][s-1].right = tree[p][s]
+    #             else:
+    #                 tree[p][s-1].left = tree[p][s]
+    #             if model[self.getVarT(p,s)]>0:
+    #                 break
+    #     return tree[1][1]
+
+    #得到模型
+    def getTreeModel(self, model,S,G,E):
+        print(self.numPath+1,self.numStep+2)
+        tree = [[0] * (self.numPath+1) for _ in range((self.numStep+2))]
+        model = ["#"] + model
+        for f in range(1,self.dataNumFeature+1):
+            if model[self.getVarA(1,1,f)]>0:
+                tree[1][1] = Node(self.data[0][f-1])
+                break
+        # 为第一个路径的内部节点赋予特征
+        for s in range(2,S[1]):
+            for f in range(1,self.dataNumFeature+1):
+                if model[self.getVarA(1,s,f)]>0:
+                    tree[1][s] = Node(self.data[0][f- 1])
+                    tree[1][s-1].left = tree[1][s]
+                    break
+        # 为第一路径的叶子节点赋予标签
+        for c in range(1,self.dataNumClass+1):
+            if model[self.getVarC(1,c)]>0:
+                tree[1][S[1]] = Node(str(self.terms[c - 1]))
+                tree[1][S[1]-1].left = tree[1][S[1]]
+                break
+        # 为剩下的路径赋予特征和标签
+        for p in range(2,self.numPath+1):
+            #内部节点
+            for s in range(1,S[p]):
+                # 如果和前一条路径一样，就不用赋予
+                if E[p,s]>0:
+                    tree[p][s] = tree[p-1][s]
+                else:
+                    #创建一个新的节点
+                    for f in range(1,self.dataNumFeature+1):
+                        if model[self.getVarA(p,s,f)]>0:
+                            tree[p][s] = Node(self.data[0][f- 1])
+                            if G[(p,s-1)]>0:
+                                tree[p][s-1].right = tree[p][s]
+                            else:
+                                tree[p][s-1].left = tree[p][s]
+                            break
+            for c in range(1,self.dataNumClass+1):
+                if model[self.getVarC(p,c)]>0:
+                    tree[p][S[p]] = Node(str(self.terms[c - 1]))
+                    if G[(p,S[p]-1)]>0:
+                        tree[p][S[p]-1].right = tree[p][S[p]]
+                    else:
+                        tree[p][S[p]-1].left = tree[p][S[p]]
+                    break
+        return tree[1][1]
+
+
+
+
+
+
+
+
+
+
